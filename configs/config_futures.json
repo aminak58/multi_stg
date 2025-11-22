@@ -1,0 +1,103 @@
+{
+    "max_open_trades": 3,
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.99,
+    "fiat_display_currency": "USD",
+    "dry_run": true,
+    "dry_run_wallet": 1000,
+    "cancel_open_orders_on_exit": true,
+
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+
+    "exchange": {
+        "name": "binance",
+        "key": "",
+        "secret": "",
+        "ccxt_config": {
+            "enableRateLimit": true,
+            "options": {
+                "defaultType": "future"
+            }
+        },
+        "ccxt_async_config": {
+            "enableRateLimit": true
+        },
+        "pair_whitelist": [
+            "BTC/USDT:USDT"
+        ],
+        "pair_blacklist": []
+    },
+
+    "entry_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "price_last_balance": 0.0,
+        "check_depth_of_market": {
+            "enabled": false,
+            "bids_to_ask_delta": 1
+        }
+    },
+
+    "exit_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1
+    },
+
+    "order_types": {
+        "entry": "limit",
+        "exit": "limit",
+        "emergency_exit": "market",
+        "force_entry": "market",
+        "force_exit": "market",
+        "stoploss": "market",
+        "stoploss_on_exchange": true,
+        "stoploss_on_exchange_interval": 60
+    },
+
+    "order_time_in_force": {
+        "entry": "GTC",
+        "exit": "GTC"
+    },
+
+    "pairlists": [
+        {
+            "method": "StaticPairList"
+        }
+    ],
+
+    "telegram": {
+        "enabled": false,
+        "token": "",
+        "chat_id": "",
+        "keyboard": [
+            ["/daily", "/stats", "/balance", "/profit"],
+            ["/status table", "/performance"],
+            ["/reload_config", "/count", "/logs"]
+        ],
+        "notification_settings": {
+            "status": "silent",
+            "warning": "on",
+            "startup": "on",
+            "entry": "on",
+            "exit": "on"
+        }
+    },
+
+    "bot_name": "BTC_Futures_Hybrid",
+    "initial_state": "running",
+    "force_entry_enable": true,
+
+    "internals": {
+        "process_throttle_secs": 5
+    },
+
+    "strategy": "HybridBTCStrategy",
+    "strategy_path": "/home/user/multi_stg/strategies/",
+
+    "dataformat_ohlcv": "json",
+    "dataformat_trades": "jsongz"
+}

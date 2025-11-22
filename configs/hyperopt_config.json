@@ -1,0 +1,43 @@
+{
+    "max_open_trades": 3,
+    "stake_currency": "USDT",
+    "stake_amount": 100,
+    "tradable_balance_ratio": 0.99,
+    "dry_run": true,
+
+    "trading_mode": "futures",
+    "margin_mode": "isolated",
+
+    "exchange": {
+        "name": "binance",
+        "key": "",
+        "secret": "",
+        "ccxt_config": {
+            "enableRateLimit": true,
+            "options": {
+                "defaultType": "future"
+            }
+        },
+        "pair_whitelist": [
+            "BTC/USDT:USDT"
+        ],
+        "pair_blacklist": []
+    },
+
+    "pairlists": [
+        {
+            "method": "StaticPairList"
+        }
+    ],
+
+    "strategy": "HybridBTCStrategy",
+    "strategy_path": "/home/user/multi_stg/strategies/",
+
+    "hyperopt": {
+        "loss": "SharpeHyperOptLoss",
+        "spaces": ["buy", "sell"],
+        "random_state": 42
+    },
+
+    "dataformat_ohlcv": "json"
+}
