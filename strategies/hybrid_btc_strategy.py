@@ -1,19 +1,26 @@
 """
-Hybrid BTC Day Trading Strategy for Futures
-============================================
+Hybrid BTC Day Trading Strategy for Futures (v2.0 - Order Flow Enhanced)
+=========================================================================
 
 This is the MAIN strategy that combines all three approaches:
 1. Trend-Pullback: For trending markets (ADX > 25)
 2. Liquidity Sweep: For ranging/choppy markets
 3. Breakout Volume: For consolidation -> explosion phases
 
+NEW in v2.0 - Order Flow Filters:
+- CVD (Cumulative Volume Delta) confirmation
+- Volume Imbalance detection
+- Absorption pattern recognition
+- Exhaustion detection for reversal avoidance
+- Order Pressure analysis
+
 The strategy automatically detects market regime and applies
-the most appropriate entry logic.
+the most appropriate entry logic WITH order flow confirmation.
 
 Key Philosophy:
-- Trending days -> Use Pullback entries
-- Ranging/Choppy days -> Hunt Liquidity Sweeps
-- Squeeze/Consolidation -> Trade Breakouts
+- Trending days -> Use Pullback entries (CVD must confirm)
+- Ranging/Choppy days -> Hunt Liquidity Sweeps (Absorption confirmation)
+- Squeeze/Consolidation -> Trade Breakouts (Imbalance confirmation)
 
 Target: 1-3 high-quality trades per day with optimal R:R
 """
@@ -37,6 +44,15 @@ from utils.indicators import (
     detect_rejection_candle
 )
 from utils.market_regime import MarketRegimeDetector, MarketRegime
+from utils.orderflow import (
+    get_order_flow_signals,
+    calculate_cvd,
+    calculate_volume_imbalance,
+    detect_absorption,
+    detect_exhaustion,
+    calculate_order_pressure,
+    analyze_order_book
+)
 
 
 class HybridBTCStrategy(IStrategy):
@@ -101,6 +117,12 @@ class HybridBTCStrategy(IStrategy):
 
     # ===== REGIME DETECTION =====
     adx_trend_threshold = IntParameter(20, 30, default=25, space='buy', load=True)
+
+    # ===== ORDER FLOW PARAMETERS =====
+    use_orderflow_filter = True  # Master switch for order flow filters
+    of_imbalance_threshold = DecimalParameter(1.3, 2.0, default=1.5, space='buy', load=True)
+    of_strong_imbalance = DecimalParameter(2.5, 4.0, default=3.0, space='buy', load=True)
+    of_min_quality_score = IntParameter(40, 80, default=60, space='buy', load=True)
 
     # Trade limiting
     max_trades_per_day = 3
@@ -263,19 +285,97 @@ class HybridBTCStrategy(IStrategy):
             (dataframe['volume'].shift(1) < dataframe['volume'].shift(2))
         )
 
+        # ========================================
+        # ORDER FLOW INDICATORS (NEW)
+        # ========================================
+        if self.use_orderflow_filter:
+            # Get comprehensive order flow signals
+            df_of = get_order_flow_signals(dataframe)
+
+            # CVD (Cumulative Volume Delta)
+            dataframe['delta'] = df_of['delta']
+            dataframe['cvd'] = df_of['cvd']
+            dataframe['cvd_trend_up'] = df_of['cvd_trend_up']
+            dataframe['cvd_trend_down'] = df_of['cvd_trend_down']
+            dataframe['cvd_divergence_bullish'] = df_of['cvd_divergence_bullish']
+            dataframe['cvd_divergence_bearish'] = df_of['cvd_divergence_bearish']
+
+            # Volume Imbalance
+            dataframe['buy_imbalance'] = df_of['buy_imbalance']
+            dataframe['sell_imbalance'] = df_of['sell_imbalance']
+            dataframe['strong_buy_imbalance'] = df_of['strong_buy_imbalance']
+            dataframe['strong_sell_imbalance'] = df_of['strong_sell_imbalance']
+            dataframe['stacked_buy_imbalance'] = df_of['stacked_buy_imbalance']
+            dataframe['stacked_sell_imbalance'] = df_of['stacked_sell_imbalance']
+
+            # Absorption
+            dataframe['absorption_buy'] = df_of['absorption_buy']
+            dataframe['absorption_sell'] = df_of['absorption_sell']
+            dataframe['absorption_buy_consecutive'] = df_of['absorption_buy_consecutive']
+            dataframe['absorption_sell_consecutive'] = df_of['absorption_sell_consecutive']
+
+            # Exhaustion (reversal warning)
+            dataframe['exhaustion_buy'] = df_of['exhaustion_buy']
+            dataframe['exhaustion_sell'] = df_of['exhaustion_sell']
+            dataframe['exhaustion_buy_divergence'] = df_of['exhaustion_buy_divergence']
+            dataframe['exhaustion_sell_divergence'] = df_of['exhaustion_sell_divergence']
+
+            # Order Pressure
+            dataframe['pressure_imbalance'] = df_of['pressure_imbalance']
+            dataframe['extreme_buy_pressure'] = df_of['extreme_buy_pressure']
+            dataframe['extreme_sell_pressure'] = df_of['extreme_sell_pressure']
+
+            # Composite signals
+            dataframe['of_buy_signal'] = df_of['of_buy_signal']
+            dataframe['of_sell_signal'] = df_of['of_sell_signal']
+            dataframe['of_strong_buy_signal'] = df_of['of_strong_buy_signal']
+            dataframe['of_strong_sell_signal'] = df_of['of_strong_sell_signal']
+            dataframe['of_reversal_buy'] = df_of['of_reversal_buy']
+            dataframe['of_reversal_sell'] = df_of['of_reversal_sell']
+
+            # Quality scores
+            dataframe['of_buy_quality'] = df_of['of_buy_quality']
+            dataframe['of_sell_quality'] = df_of['of_sell_quality']
+        else:
+            # Default values when order flow is disabled
+            dataframe['of_buy_signal'] = True
+            dataframe['of_sell_signal'] = True
+            dataframe['exhaustion_buy'] = False
+            dataframe['exhaustion_sell'] = False
+            dataframe['of_buy_quality'] = 100
+            dataframe['of_sell_quality'] = 100
+
         return dataframe
 
     def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
         """
-        ADAPTIVE ENTRY LOGIC
-        Selects entry method based on market regime.
+        ADAPTIVE ENTRY LOGIC WITH ORDER FLOW FILTERS
+        Selects entry method based on market regime + order flow confirmation.
         """
+
+        # ========================================
+        # ORDER FLOW FILTER CONDITIONS
+        # ========================================
+        # These filters ensure we only enter when order flow confirms
+
+        # For LONG trades: CVD trending up, no exhaustion, quality score OK
+        of_long_filter = (
+            (~dataframe['exhaustion_buy']) &  # No buy exhaustion (avoid tops)
+            (dataframe['of_buy_quality'] >= self.of_min_quality_score.value)
+        )
+
+        # For SHORT trades: CVD trending down, no exhaustion, quality score OK
+        of_short_filter = (
+            (~dataframe['exhaustion_sell']) &  # No sell exhaustion (avoid bottoms)
+            (dataframe['of_sell_quality'] >= self.of_min_quality_score.value)
+        )
 
         # ========================================
         # LONG ENTRIES
         # ========================================
 
         # 1. TREND-PULLBACK LONG (for trending markets)
+        # Order Flow: CVD must confirm uptrend
         pullback_long = (
             (dataframe['use_pullback']) &
             (dataframe['uptrend']) &
@@ -287,10 +387,14 @@ class HybridBTCStrategy(IStrategy):
                 (dataframe['higher_low'] & dataframe['volume_spike'])
             ) &
             (dataframe['rsi'] < 70) &
-            (dataframe['volume'] > 0)
+            (dataframe['volume'] > 0) &
+            # ORDER FLOW FILTERS
+            (of_long_filter) &
+            (dataframe['cvd_trend_up'] | dataframe['buy_imbalance'])  # CVD or imbalance confirms
         )
 
         # 2. LIQUIDITY SWEEP LONG (for ranging/choppy markets)
+        # Order Flow: Absorption pattern confirms (smart money absorbing sells)
         liquidity_long = (
             (dataframe['use_liquidity']) &
             (
@@ -303,15 +407,30 @@ class HybridBTCStrategy(IStrategy):
             ) &
             (dataframe['close'] > dataframe['open'].shift(1)) &
             (dataframe['rsi'] < 70) &
-            (dataframe['volume'] > 0)
+            (dataframe['volume'] > 0) &
+            # ORDER FLOW FILTERS
+            (of_long_filter) &
+            (
+                (dataframe['absorption_buy']) |  # Absorption confirms
+                (dataframe['of_reversal_buy']) |  # Reversal signal
+                (dataframe['stacked_buy_imbalance'])  # Strong imbalance
+            )
         )
 
         # 3. BREAKOUT LONG (for consolidation phases)
+        # Order Flow: Strong imbalance confirms breakout is real
         breakout_long = (
             (dataframe['use_breakout']) &
             (dataframe['breakout_up']) &
             (dataframe['rsi'] > 50) &
-            (dataframe['volume'] > 0)
+            (dataframe['volume'] > 0) &
+            # ORDER FLOW FILTERS
+            (of_long_filter) &
+            (
+                (dataframe['strong_buy_imbalance']) |  # Strong imbalance
+                (dataframe['extreme_buy_pressure']) |  # Extreme pressure
+                (dataframe['delta'] > 0)  # Positive delta on breakout
+            )
         )
 
         # Combine all LONG conditions
@@ -332,6 +451,7 @@ class HybridBTCStrategy(IStrategy):
         # ========================================
 
         # 1. TREND-PULLBACK SHORT
+        # Order Flow: CVD must confirm downtrend
         pullback_short = (
             (dataframe['use_pullback']) &
             (dataframe['downtrend']) &
@@ -343,10 +463,14 @@ class HybridBTCStrategy(IStrategy):
                 (dataframe['lower_high'] & dataframe['volume_spike'])
             ) &
             (dataframe['rsi'] > 30) &
-            (dataframe['volume'] > 0)
+            (dataframe['volume'] > 0) &
+            # ORDER FLOW FILTERS
+            (of_short_filter) &
+            (dataframe['cvd_trend_down'] | dataframe['sell_imbalance'])  # CVD or imbalance confirms
         )
 
         # 2. LIQUIDITY SWEEP SHORT
+        # Order Flow: Absorption pattern confirms (smart money absorbing buys)
         liquidity_short = (
             (dataframe['use_liquidity']) &
             (
@@ -359,15 +483,30 @@ class HybridBTCStrategy(IStrategy):
             ) &
             (dataframe['close'] < dataframe['open'].shift(1)) &
             (dataframe['rsi'] > 30) &
-            (dataframe['volume'] > 0)
+            (dataframe['volume'] > 0) &
+            # ORDER FLOW FILTERS
+            (of_short_filter) &
+            (
+                (dataframe['absorption_sell']) |  # Absorption confirms
+                (dataframe['of_reversal_sell']) |  # Reversal signal
+                (dataframe['stacked_sell_imbalance'])  # Strong imbalance
+            )
         )
 
         # 3. BREAKOUT SHORT
+        # Order Flow: Strong imbalance confirms breakout is real
         breakout_short = (
             (dataframe['use_breakout']) &
             (dataframe['breakout_down']) &
             (dataframe['rsi'] < 50) &
-            (dataframe['volume'] > 0)
+            (dataframe['volume'] > 0) &
+            # ORDER FLOW FILTERS
+            (of_short_filter) &
+            (
+                (dataframe['strong_sell_imbalance']) |  # Strong imbalance
+                (dataframe['extreme_sell_pressure']) |  # Extreme pressure
+                (dataframe['delta'] < 0)  # Negative delta on breakout
+            )
         )
 
         # Combine all SHORT conditions
@@ -385,9 +524,9 @@ class HybridBTCStrategy(IStrategy):
         return dataframe
 
     def populate_exit_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
-        """Define exit signals based on entry type."""
+        """Define exit signals based on entry type + order flow."""
 
-        # Exit LONG
+        # Exit LONG - Enhanced with Order Flow
         dataframe.loc[
             (
                 # Trend reversal
@@ -399,19 +538,27 @@ class HybridBTCStrategy(IStrategy):
                 # Opposite sweep (liquidity target)
                 (dataframe['sweep_high']) |
                 # Failed breakout
-                (dataframe['close'] < dataframe['range_mid'])
+                (dataframe['close'] < dataframe['range_mid']) |
+                # ORDER FLOW EXIT SIGNALS
+                (dataframe['exhaustion_buy_divergence']) |  # Exhaustion at top
+                (dataframe['of_reversal_sell']) |  # Reversal signal
+                (dataframe['cvd_divergence_bearish'])  # CVD diverging
             ),
             'exit_long'
         ] = 1
 
-        # Exit SHORT
+        # Exit SHORT - Enhanced with Order Flow
         dataframe.loc[
             (
                 (dataframe['uptrend']) |
                 (dataframe['rsi'] < 22) |
                 (dataframe['bullish_engulfing']) |
                 (dataframe['sweep_low']) |
-                (dataframe['close'] > dataframe['range_mid'])
+                (dataframe['close'] > dataframe['range_mid']) |
+                # ORDER FLOW EXIT SIGNALS
+                (dataframe['exhaustion_sell_divergence']) |  # Exhaustion at bottom
+                (dataframe['of_reversal_buy']) |  # Reversal signal
+                (dataframe['cvd_divergence_bullish'])  # CVD diverging
             ),
             'exit_short'
         ] = 1
