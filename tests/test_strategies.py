@@ -8,8 +8,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import sys
+import os
 
-sys.path.insert(0, '/home/user/multi_stg')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.indicators import (
     calculate_swing_points,
