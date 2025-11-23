@@ -28,7 +28,8 @@ import talib.abstract as ta
 
 # Import custom utilities
 import sys
-sys.path.append('/home/user/multi_stg')
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.indicators import (
     detect_engulfing_pattern,
     detect_rejection_candle,

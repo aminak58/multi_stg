@@ -29,7 +29,8 @@ from freqtrade.persistence import Trade
 import talib.abstract as ta
 
 import sys
-sys.path.append('/home/user/multi_stg')
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.indicators import (
     calculate_swing_points,
     detect_liquidity_zones,
